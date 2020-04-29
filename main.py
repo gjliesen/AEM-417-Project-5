@@ -51,7 +51,7 @@ def get_receiver_data(file, option):
     df.columns = columns
     df = df.set_index('Time')
     if option == 'static':
-        df = df.loc[417185:417447]
+        df = df.loc[417185:417200]
     elif option == 'dynamic':
         df = df.loc[417448:417885]
     return df

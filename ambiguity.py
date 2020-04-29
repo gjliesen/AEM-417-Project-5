@@ -9,6 +9,7 @@ import sys
 
 sys.path.append('../..utils')
 sys.path.append('./LAMBDA_Python_1.0')
+import LAMBDA
 
 
 def get_static_solution(HHH, YYY):
@@ -50,14 +51,32 @@ def get_geometry_free(rho, YYY):
 
 
 def create_R_matrix(YYY, num_sats):
-    R = np.zeros((len(YYY), num_sats - 1))
-    print()
+    R = 2 * cn.SIGMA ** 2 * (np.ones(num_sats - 1)
+                             + np.diag(np.ones(num_sats - 1)))
+    return R
 
 
-def brute_force():
-    true_baseline = [36, 0.36]
-    N_cand
-    print()
+def brute_force(R, HHH, N_float, HHH_cand, YYY):
+    N_opt = []
+    N_cand = []
+    Baseline_cand = []
+    N_lambda = []
+    for i in range(len(HHH)):
+        P = la.pinv(HHH[i].T @ la.pinv(R) @ HHH[i])
+        P1 = P[3:, 3:]
+        N_cand_tuple = (LAMBDA.main(N_float[i], P1, 2, 'ncands', 3))
+        n_cand = N_cand_tuple[0]
+        static_x_cand = \
+            la.pinv(HHH_cand[i].T @ HHH_cand[i]) @ HHH_cand[i].T @ (YYY[i]
+                                                                    + n_cand)
+        baseline_cand = la.norm(static_x_cand)
+        Baseline_cand.append(baseline_cand)
+        N_cand.append(n_cand)
+        n_opt = abs((baseline_cand - 0.36)).min()
+        N_opt.append(n_opt)
+        N_lambda.append(n_cand[n_opt])
+
+    return N_lambda
 
 
 def ecef_to_ned(x_ecef, R):
@@ -142,7 +161,8 @@ def p_range_multi(base_df, sat_pos, rover_df, R):
     return [HHH_cand, HHH, YYY]
 
 
-def least_squares_pos_solution(base_df, sat_pos, rover_df, R, lat, long, h, rho):
+def least_squares_pos_solution(base_df, sat_pos, rover_df, R, lat, long, h,
+                               rho):
     [HHH_cand, HHH, YYY] = p_range_multi(base_df, sat_pos, rover_df, R)
     static_sol = get_static_solution(HHH, YYY)
     static_x = get_static_x(static_sol)
@@ -151,4 +171,5 @@ def least_squares_pos_solution(base_df, sat_pos, rover_df, R, lat, long, h, rho)
     N_Round = get_N_round(N_float)
     N_gfree = get_geometry_free(rho, YYY)
     R = create_R_matrix(YYY, 7)
-    return(static_NED)
+    [baseline_cand, N_lambda] = brute_force(R, HHH, N_float, HHH_cand, YYY)
+    return (static_NED)
