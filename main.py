@@ -275,7 +275,7 @@ def calc_least_squares(data, H, rho, lat, long, h):
                              columns=['x', 'y', 'z', 'lat', 'long', 'alt',
                                       'p_inv'])
     for i in range(len(H)):
-        p_inv = la.inv(H[i].T @ H[i])
+        p_inv = la.pinv(H[i].T @ H[i])
         x_hat = p_inv @ H[i].T @ rho[i]
         ned = [float(x_hat[0]), float(x_hat[1]), float(x_hat[2])]
         rover_pos.iloc[i, 0] = float(x_hat[0])
@@ -346,16 +346,25 @@ def get_least_squares(base_df, sat_pos, rover_df, R, lat, long, h):
     return calc_least_squares(base_df, H, rho, lat, long, h)
 
 
-def plot(rover_pos, DOP):
+def plot(temp, rover_pos, DOP):
     rover_pos.plot(x='x', y='y', title='Rover Position NE', grid=True)
     plt.xlabel('N')
     plt.ylabel('E')
     plt.show()
 
+    temp.plot(x='x', y='y', title='Rover Position NE', grid=True)
+    plt.xlabel('N')
+    plt.ylabel('E')
+    plt.show()
+
     rover_pos = rover_pos.reset_index()
+    temp = temp.reset_index()
     DOP = DOP.reset_index()
 
     rover_pos.plot(x='Time', y='z', title='Rover Down', grid=True)
+    plt.show()
+
+    temp.plot(x='Time', y='z', title='Rover Down', grid=True)
     plt.show()
 
     DOP.plot(x='Time', y=['HDOP', 'VDOP'], title='HDOP and VDOP', grid=True)
@@ -390,12 +399,13 @@ def main():
     # Iterative Least Squares
     rover_pos = get_least_squares(base_df, sat_pos, rover_df, R,
                                   lat, long, h)
-
+    temp = least_squares.least_squares_pos_solution(base_df, sat_pos, rover_df,
+                                                    R, lat, long, h)
     # Dilutions of Precision
     DOP = calc_dilution_of_precisions(rover_pos)
 
     # Plotting
-    plot(rover_pos, DOP)
+    plot(temp, rover_pos, DOP)
     print('done')
 
 
