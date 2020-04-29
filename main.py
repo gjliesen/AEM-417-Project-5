@@ -11,6 +11,7 @@ import navpy
 import constants as cn
 import integer_ambiguities
 import least_squares
+import cycle_slip
 
 
 def read_ephemeris_data(file):
@@ -23,7 +24,7 @@ def get_ephemeris_data(file):
     ephem_df = read_ephemeris_data(file)
     ephem_df.prn = ephem_df.prn.round(0)
     ephem_df_list = []
-    for i in cn.sat_int:
+    for i in cn.sats:
         ephem_df_list.append(ephem_df.loc[ephem_df['prn'] == i])
     return ephem_df_list
 
@@ -36,16 +37,16 @@ def read_receiver_data(file):
     return df
 
 
-def get_receiver_data(file, receiver, option):
+def get_receiver_data(file, option):
     columns = ['Time', 'week_num', 'x', 'y',
                'z', 'lat', 'lon', 'alt',
                'num_sat', 'v_n', 'v_e', ' v_d']
-    for i in range(len(cn.sat_str)):
-        temp = ['prn',
-                'snr ' + cn.sat_str[i],
-                'csc ' + cn.sat_str[i],
-                receiver + ' pseudorange ' + cn.sat_str[i],
-                'cp ' + cn.sat_str[i]]
+    for sat in cn.sats:
+        temp = ['prn ' + str(sat),
+                'snr ' + str(sat),
+                'csc ' + str(sat),
+                'pseudorange ' + str(sat),
+                'cp ' + str(sat)]
         columns += temp
     df = read_receiver_data(file)
     df.columns = columns
@@ -55,13 +56,6 @@ def get_receiver_data(file, receiver, option):
     elif option == 'dynamic':
         df = df.loc[417448:417885]
     return df
-
-
-def match_indices(base, rover):
-    base.reset_index(inplace=True)
-    base = base.drop(['Time'], axis=1)
-    base.set_index(rover.index, inplace=True)
-    return base
 
 
 def get_ned_origin(base):
@@ -129,7 +123,7 @@ def calc_sv_position(rover_df, br_data):
     temp['xk_prime'] = temp['rk'] * np.cos(temp['Uk'])
     temp['yk_prime'] = temp['rk'] * np.sin(temp['Uk'])
 
-    # Sattelite Position calculations
+    # Satellite Position calculations
     sat_pos = pd.DataFrame(index=rover_df.index)
     sat_pos['x'] = \
         temp['xk_prime'] * np.cos(temp['Omega_k']) - temp['yk_prime'] \
@@ -143,12 +137,12 @@ def calc_sv_position(rover_df, br_data):
 
 
 def get_sv_position(ephem, rover):
-    index = [353, 354, 355, 347, 359, 361, 365, 371, 372]
+    index = [353, 354, 355, 359, 361, 365, 372]
     sat_pos = []
-    for i in range(9):
-        name = 'rover pseudorange ' + cn.sat_str[i]
+    for idx, sat in enumerate(cn.sats):
+        name = 'pseudorange ' + str(sat)
         column = rover[name]
-        row = ephem[i].loc[[index[i]]].to_dict('list')
+        row = ephem[idx].loc[[index[idx]]].to_dict('list')
         sat_pos.append(calc_sv_position(column, row))
     return sat_pos
 
@@ -197,11 +191,9 @@ def convert_wgs_to_lla(base_vector):
     return [lat, long, h, R]
 
 
-def ecef_to_ned(x, y, z, R):
-    x_ecef = np.array([[x], [y], [z]])
+def ecef_to_ned(x_ecef, R):
     x_temp = R.T @ x_ecef
-    x_ned = [x_temp.item(0), x_temp.item(1), x_temp.item(2)]
-    return x_ned
+    return x_temp
 
 
 def ecef_to_ned2(x, y, z, R):
@@ -239,13 +231,13 @@ def calc_los_elevations(los_df, R):
 
 def get_los_positions(sat_pos, ned_origin):
     los_df = []
-    for i in range(9):
+    for i in range(7):
         los_df.append(calc_los_positions(sat_pos[i], ned_origin))
     return los_df
 
 
 def get_los_elevations(los_df, R):
-    for i in range(9):
+    for i in range(7):
         los_df[i] = calc_los_elevations(los_df[i], R)
     return los_df
 
@@ -274,9 +266,7 @@ def calc_dilution_of_precisions(rover_pos):
 
 
 def get_ref_vector(x_ref):
-    vector = []
-    for i in range(3):
-        vector.append(x_ref[i] / la.norm(x_ref))
+    vector = x_ref / np.linalg.norm(x_ref)
     return vector
 
 
@@ -305,37 +295,40 @@ def p_range_multi(base_df, sat_pos, rover_df, R):
     H_list = []
     rho_list = []
     for Time in base_df.index:
-        sat = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        sats_temp = cn.sats.copy()
         rho = np.array([[]])
         H = np.array([[]])
         flag = True
         ref = base_df.Ref.loc[Time]
-        x = sat_pos[ref].loc[Time, 'x']
-        y = sat_pos[ref].loc[Time, 'y']
-        z = sat_pos[ref].loc[Time, 'z']
-        del sat[ref]
-        x_ref = ecef_to_ned(x, y, z, R)
+
+        x_ecef = sat_pos[ref].loc[Time, ['x', 'y', 'z']]
+        x_ecef = x_ecef.to_numpy().reshape((-1, 1))
+
+        del sats_temp[ref]
+
+        x_ref = ecef_to_ned(x_ecef, R)
         vec = get_ref_vector(x_ref)
-        for i in sat:
-            if sat_pos[i].at[Time, 'x'] != 0:
-                x_temp = sat_pos[i].loc[Time, 'x']
-                y_temp = sat_pos[i].loc[Time, 'y']
-                z_temp = sat_pos[i].loc[Time, 'z']
-                sat_temp = ecef_to_ned(x_temp, y_temp, z_temp, R)
-                vec_temp = get_ref_vector(sat_temp)
-                H_temp = np.array([vec[0] - vec_temp[0],
-                                   vec[1] - vec_temp[1],
-                                   vec[2] - vec_temp[2]])
+
+        for i in sats_temp:
+            if sat_pos[cn.sats.index(i)].at[Time, 'x'] != 0:
+                x_ecef_temp = sat_pos[cn.sats.index(i)].loc[Time,
+                                                            ['x', 'y', 'z']]
+                x_ecef_temp = x_ecef_temp.to_numpy().reshape((-1, 1))
+                x_cur_temp = ecef_to_ned(x_ecef_temp, R)
+                vec_temp = get_ref_vector(x_cur_temp)
+                H_temp = (vec - vec_temp).T
+
                 phi_rover_1 = rover_df.loc[
-                    Time, 'rover pseudorange ' + cn.sat_str[i]]
+                    Time, 'pseudorange ' + str(i)]
                 phi_base_1 = base_df.loc[
-                    Time, 'base pseudorange ' + cn.sat_str[i]]
+                    Time, 'pseudorange ' + str(i)]
                 phi_rover_2 = rover_df.loc[
-                    Time, 'rover pseudorange ' + cn.sat_str[ref]]
+                    Time, 'pseudorange ' + str(cn.sats[ref])]
                 phi_base_2 = base_df.loc[
-                    Time, 'base pseudorange ' + cn.sat_str[ref]]
+                    Time, 'pseudorange ' + str(cn.sats[ref])]
                 rho_temp = (phi_rover_1 - phi_base_1) - (
                         phi_rover_2 - phi_base_2)
+
                 if flag:
                     H = H_temp
                     rho = np.array([[rho_temp]])
@@ -372,13 +365,12 @@ def plot(rover_pos, DOP):
 def main():
     ephem_df_list = get_ephemeris_data('gps_ephem.txt')
 
-    base_df = get_receiver_data('base.txt', 'base', 'static')
+    base_df = get_receiver_data('base.txt', 'static')
 
-    rover_df = get_receiver_data('rover.txt', 'rover', 'static')
+    rover_df = get_receiver_data('rover.txt', 'static')
 
-    # Matching Indices
-    base_df = match_indices(base_df, rover_df)
-
+    [rover_df, base_df, ephem_df_list] = \
+        cycle_slip.get(rover_df, base_df, ephem_df_list)
     # Calculating Satellite Position
     sat_pos = get_sv_position(ephem_df_list, rover_df)
 
