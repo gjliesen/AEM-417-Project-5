@@ -33,15 +33,25 @@ def get_N_float(static_sol):
     return N_float
 
 
-def rounding(N):
-    N_round = N.round(0)
-    print()
+def get_N_round(N):
+    N_round = []
+    for i in range(len(N)):
+        N_round.append(N[i].round(0))
+    return N_round
 
 
-def geometry_free(rho, cp):
-    g_free = (rho * (1 / cn.WAVELENGTH) - cp)
-    n_g_free = g_free.mean(2).round(0)
+def get_geometry_free(rho, YYY):
+    N_gfree = []
+    for i in range(len(rho)):
+        g_free = (rho[i] * (1 / cn.WAVELENGTH) - YYY[i])
+        n_g_free = g_free.mean().round(0)
+        N_gfree.append(n_g_free)
     return n_g_free
+
+
+def create_R_matrix(YYY, num_sats):
+    R = np.zeros((len(YYY), num_sats - 1))
+    print()
 
 
 def brute_force():
@@ -132,10 +142,13 @@ def p_range_multi(base_df, sat_pos, rover_df, R):
     return [HHH_cand, HHH, YYY]
 
 
-def least_squares_pos_solution(base_df, sat_pos, rover_df, R, lat, long, h):
+def least_squares_pos_solution(base_df, sat_pos, rover_df, R, lat, long, h, rho):
     [HHH_cand, HHH, YYY] = p_range_multi(base_df, sat_pos, rover_df, R)
     static_sol = get_static_solution(HHH, YYY)
     static_x = get_static_x(static_sol)
     static_NED = static_x_to_NED(base_df, static_x, lat, long, h)
-    # N_float = get_N_float(static_sol)
+    N_float = get_N_float(static_sol)
+    N_Round = get_N_round(N_float)
+    N_gfree = get_geometry_free(rho, YYY)
+    R = create_R_matrix(YYY, 7)
     return(static_NED)

@@ -342,7 +342,7 @@ def p_range_multi(base_df, sat_pos, rover_df, R):
 
 def get_least_squares(base_df, sat_pos, rover_df, R, lat, long, h):
     [H, rho] = p_range_multi(base_df, sat_pos, rover_df, R)
-    return calc_least_squares(base_df, H, rho, lat, long, h)
+    return [calc_least_squares(base_df, H, rho, lat, long, h), rho, H]
 
 
 def plot(temp, rover_pos, DOP):
@@ -396,10 +396,10 @@ def main():
     base_df = get_ref_sat(base_df, los_df)
 
     # Iterative Least Squares
-    rover_pos = get_least_squares(base_df, sat_pos, rover_df, R,
-                                  lat, long, h)
+    [rover_pos, rho, H] = get_least_squares(base_df, sat_pos, rover_df, R,
+                                            lat, long, h)
     temp = ambiguity.least_squares_pos_solution(base_df, sat_pos, rover_df,
-                                                R, lat, long, h)
+                                                R, lat, long, h, rho)
     # Dilutions of Precision
     DOP = calc_dilution_of_precisions(rover_pos)
 
