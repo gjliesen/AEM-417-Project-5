@@ -13,7 +13,7 @@ gps_ephm_columns = ['prn', 'M0', 'DeltaN', 'e', 'sqrtA', 'Omega0',
 receiver_col_start = ['Time', 'week_num', 'x', 'y',
                       'z', 'lat', 'lon', 'alt',
                       'num_sat', 'v_n', 'v_e', ' v_d']
-
+it = 0
 sat_cols = []
 
 for sat in sats:

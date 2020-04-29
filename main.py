@@ -51,7 +51,7 @@ def get_receiver_data(file, option):
     df.columns = columns
     df = df.set_index('Time')
     if option == 'static':
-        df = df.loc[417185:417200]
+        df = df.loc[417185:417448]
     elif option == 'dynamic':
         df = df.loc[417448:417885]
     return df
@@ -345,28 +345,25 @@ def get_least_squares(base_df, sat_pos, rover_df, R, lat, long, h):
     return [calc_least_squares(base_df, H, rho, lat, long, h), rho, H]
 
 
-def plot(temp, rover_pos, DOP):
-    rover_pos.plot(x='x', y='y', title='Rover Position NE', grid=True)
+def plot(round_NED, gfree_NED, brute_NED):
+    round_NED.plot(x='x', y='y', title='Rover Position NE', grid=True)
+    plt.xlabel('N')
+    plt.ylabel('E')
+    gfree_NED.plot(x='x', y='y', title='Rover Position NE', grid=True)
+    plt.xlabel('N')
+    plt.ylabel('E')
+    brute_NED.plot(x='x', y='y', title='Rover Position NE', grid=True)
     plt.xlabel('N')
     plt.ylabel('E')
     plt.show()
 
-    temp.plot(x='x', y='y', title='Rover Position NE', grid=True)
-    plt.xlabel('N')
-    plt.ylabel('E')
-    plt.show()
+    round_NED = round_NED.reset_index()
+    gfree_NED = gfree_NED.reset_index()
+    brute_NED = brute_NED.reset_index()
 
-    rover_pos = rover_pos.reset_index()
-    temp = temp.reset_index()
-    DOP = DOP.reset_index()
-
-    rover_pos.plot(x='Time', y='z', title='Rover Down', grid=True)
-    plt.show()
-
-    temp.plot(x='Time', y='z', title='Rover Down', grid=True)
-    plt.show()
-
-    DOP.plot(x='Time', y=['HDOP', 'VDOP'], title='HDOP and VDOP', grid=True)
+    round_NED.plot(x='Time', y='z', title='Rover Down', grid=True)
+    gfree_NED.plot(x='Time', y='z', title='Rover Down', grid=True)
+    brute_NED.plot(x='Time', y='z', title='Rover Down', grid=True)
     plt.show()
 
 
@@ -398,13 +395,15 @@ def main():
     # Iterative Least Squares
     [rover_pos, rho, H] = get_least_squares(base_df, sat_pos, rover_df, R,
                                             lat, long, h)
-    temp = ambiguity.least_squares_pos_solution(base_df, sat_pos, rover_df,
-                                                R, lat, long, h, rho)
+    [round_NED, gfree_NED, brute_NED, static_NED] = \
+        ambiguity.solution(base_df, sat_pos,
+                           rover_df, R, lat, long, h, rho)
+
     # Dilutions of Precision
     DOP = calc_dilution_of_precisions(rover_pos)
 
     # Plotting
-    plot(temp, rover_pos, DOP)
+    plot(round_NED, gfree_NED, brute_NED)
     print('done')
 
 

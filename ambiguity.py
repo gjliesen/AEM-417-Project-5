@@ -20,7 +20,7 @@ def get_static_solution(HHH, YYY):
     return sol
 
 
-def get_static_x(static_sol):
+def get_x(static_sol):
     static_x = []
     for i in range(len(static_sol)):
         static_x.append(static_sol[i][0:3])
@@ -45,9 +45,8 @@ def get_geometry_free(rho, YYY):
     N_gfree = []
     for i in range(len(rho)):
         g_free = (rho[i] * (1 / cn.WAVELENGTH) - YYY[i])
-        n_g_free = g_free.mean().round(0)
-        N_gfree.append(n_g_free)
-    return n_g_free
+        N_gfree.append(g_free.round(0))
+    return N_gfree
 
 
 def create_R_matrix(YYY, num_sats):
@@ -57,8 +56,8 @@ def create_R_matrix(YYY, num_sats):
 
 
 def brute_force(R, HHH, N_float, HHH_cand, YYY):
-    N_opt = []
-    N_cand = []
+    index = list(range(len(HHH)))
+    n_df = pd.DataFrame(index=index, columns=[0, 1, 2, 3, 4, 5])
     Baseline_cand = []
     N_lambda = []
     for i in range(len(HHH)):
@@ -71,12 +70,12 @@ def brute_force(R, HHH, N_float, HHH_cand, YYY):
                                                                     + n_cand)
         baseline_cand = la.norm(static_x_cand)
         Baseline_cand.append(baseline_cand)
-        N_cand.append(n_cand)
-        n_opt = abs((baseline_cand - 0.36)).min()
-        N_opt.append(n_opt)
-        N_lambda.append(n_cand[n_opt])
-
-    return N_lambda
+        n_df.loc[i, [0, 1, 2, 3, 4, 5]] = n_cand.T
+    n_df = n_df.sub(0.36e3)
+    n_df = n_df.abs()
+    Baseline_cand = [Baseline_cand[0], n_df.loc[0, [0, 1, 2, 3, 4, 5]]]
+    N_lambda = n_df.min()
+    return N_lambda, Baseline_cand, n_df
 
 
 def ecef_to_ned(x_ecef, R):
@@ -89,16 +88,21 @@ def get_ref_vector(x_ref):
     return vector
 
 
-def static_x_to_NED(data, static_x, lat, long, h):
+def N_to_NED(data, static_x, lat, long, h):
+    cn.it += 1
     static_NED = pd.DataFrame(index=data.index,
                               columns=['x', 'y', 'z',
                                        'lat', 'long', 'alt'])
     for i in range(len(static_x)):
-        ned = [float(static_x[i][0]), float(static_x[i][1]),
-               float(static_x[i][2])]
-        static_NED.iloc[i, 0] = float(static_x[i][0])
-        static_NED.iloc[i, 1] = float(static_x[i][1])
-        static_NED.iloc[i, 2] = float(static_x[i][2])
+        if cn.it != 4:
+            ned = [float(static_x[i][0]), float(static_x[i][1]),
+                   float(static_x[i][2])]
+        else:
+            ned = [float(static_x.iloc[i, 0]), float(static_x.iloc[i, 1]),
+                   float(static_x.iloc[i, 2])]
+        static_NED.iloc[i, 0] = ned[0]
+        static_NED.iloc[i, 1] = ned[1]
+        static_NED.iloc[i, 2] = ned[2]
         coord = navpy.ned2lla(ned, lat * 180 / m.pi, long * 180 / m.pi, h,
                               latlon_unit='deg', alt_unit='m',
                               model='wgs84')
@@ -161,15 +165,20 @@ def p_range_multi(base_df, sat_pos, rover_df, R):
     return [HHH_cand, HHH, YYY]
 
 
-def least_squares_pos_solution(base_df, sat_pos, rover_df, R, lat, long, h,
-                               rho):
+def solution(base_df, sat_pos, rover_df, R, lat, long, h,
+             rho):
     [HHH_cand, HHH, YYY] = p_range_multi(base_df, sat_pos, rover_df, R)
     static_sol = get_static_solution(HHH, YYY)
-    static_x = get_static_x(static_sol)
-    static_NED = static_x_to_NED(base_df, static_x, lat, long, h)
+    static_x = get_x(static_sol)
     N_float = get_N_float(static_sol)
-    N_Round = get_N_round(N_float)
+    N_round = get_N_round(N_float)
     N_gfree = get_geometry_free(rho, YYY)
     R = create_R_matrix(YYY, 7)
-    [baseline_cand, N_lambda] = brute_force(R, HHH, N_float, HHH_cand, YYY)
-    return (static_NED)
+    Baseline_cand, N_lambda, n_df = brute_force(R, HHH, N_float, HHH_cand, YYY)
+    static_x = get_x(static_sol)
+    static_NED = N_to_NED(base_df, static_x, lat, long, h)
+
+    round_NED = N_to_NED(base_df, N_round, lat, long, h)
+    gfree_NED = N_to_NED(base_df, N_gfree, lat, long, h)
+    brute_NED = N_to_NED(base_df, n_df, lat, long, h)
+    return [round_NED, gfree_NED, brute_NED, static_NED]
