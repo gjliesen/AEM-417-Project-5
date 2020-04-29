@@ -1,0 +1,23 @@
+rec_tow = 1;     
+rec_week_num = 2;
+rec_x = 3;       
+rec_y = 4;       
+rec_z = 5;
+rec_lat = 6;     
+rec_lon = 7;     
+rec_alt = 8;
+rec_num_sat = 9;
+rec_v_n = 10;     
+rec_v_e = 11;     
+rec_v_d = 12;
+
+% Start of Data
+rec_data = 13; 
+
+% Indices to follow are relative (NOTE: satellites numbered 0:31)
+rec_prn = 0;     
+rec_snr = 1;     
+rec_csc = 2;     
+rec_pr = 3;      
+rec_cp = 4;
+rec_skip = 5;
