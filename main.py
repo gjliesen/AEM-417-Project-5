@@ -9,6 +9,8 @@ from matplotlib import pyplot as plt
 from scipy import linalg as la
 import navpy
 import constants as cn
+import integer_ambiguities
+import least_squares
 
 
 def read_ephemeris_data(file):
@@ -34,7 +36,7 @@ def read_receiver_data(file):
     return df
 
 
-def get_receiver_data(file, type, option):
+def get_receiver_data(file, receiver, option):
     columns = ['Time', 'week_num', 'x', 'y',
                'z', 'lat', 'lon', 'alt',
                'num_sat', 'v_n', 'v_e', ' v_d']
@@ -42,7 +44,7 @@ def get_receiver_data(file, type, option):
         temp = ['prn',
                 'snr ' + cn.sat_str[i],
                 'csc ' + cn.sat_str[i],
-                type + ' pseudorange ' + cn.sat_str[i],
+                receiver + ' pseudorange ' + cn.sat_str[i],
                 'cp ' + cn.sat_str[i]]
         columns += temp
     df = read_receiver_data(file)
@@ -111,28 +113,30 @@ def calc_sv_position(rover_df, br_data):
     temp['Cosv'] = temp['numc'] / temp['denc']
     temp['vk'] = np.arctan2(temp['Sinv'], temp['Cosv'])
     temp['Phi_k'] = temp['vk'] + br_data.get('omega')[0]
-    temp['Uk'] = temp['Phi_k'] + br_data.get('Cus')[0] * np.sin(
-        temp['Phi_k'] * 2) + br_data.get('Cuc')[0] * \
-                 np.cos(temp['Phi_k'] * 2)
+    temp['Uk'] = \
+        temp['Phi_k'] + br_data.get('Cus')[0] \
+        * np.sin(temp['Phi_k'] * 2) + br_data.get('Cuc')[0] \
+        * np.cos(temp['Phi_k'] * 2)
     temp['rk'] = temp['A'] * (temp['CosE'] * e * -1 + 1) + br_data.get('Crs')[
         0]
-    temp['ik'] = br_data.get('Io')[0] + br_data.get('IDOT')[0] * temp['Tk'] + \
-                 br_data.get('Cis')[0] * \
-                 np.sin(temp['Phi_k'] * 2) \
-                 + br_data.get('Cic')[0] * np.cos(temp['Phi_k'] * 2)
-    temp['Omega_k'] = temp['Tk'] * (br_data.get('OmegaDot')[0] - OmegaDote) + \
-                      br_data.get('Omega0')[0] - OmegaDote * To
+    temp['ik'] = \
+        br_data.get('Io')[0] + br_data.get('IDOT')[0] * temp['Tk'] \
+        + br_data.get('Cis')[0] * np.sin(temp['Phi_k'] * 2) \
+        + br_data.get('Cic')[0] * np.cos(temp['Phi_k'] * 2)
+    temp['Omega_k'] = \
+        temp['Tk'] * (br_data.get('OmegaDot')[0] - OmegaDote) \
+        + br_data.get('Omega0')[0] - OmegaDote * To
     temp['xk_prime'] = temp['rk'] * np.cos(temp['Uk'])
     temp['yk_prime'] = temp['rk'] * np.sin(temp['Uk'])
 
     # Sattelite Position calculations
     sat_pos = pd.DataFrame(index=rover_df.index)
-    sat_pos['x'] = temp['xk_prime'] * np.cos(temp['Omega_k']) - temp[
-        'yk_prime'] * np.cos(temp['ik']) * \
-                   np.sin(temp['Omega_k'])
-    sat_pos['y'] = temp['xk_prime'] * np.sin(temp['Omega_k']) + temp[
-        'yk_prime'] * np.cos(temp['ik']) * \
-                   np.cos(temp['Omega_k'])
+    sat_pos['x'] = \
+        temp['xk_prime'] * np.cos(temp['Omega_k']) - temp['yk_prime'] \
+        * np.cos(temp['ik']) * np.sin(temp['Omega_k'])
+    sat_pos['y'] = \
+        temp['xk_prime'] * np.sin(temp['Omega_k']) + temp['yk_prime'] \
+        * np.cos(temp['ik']) * np.cos(temp['Omega_k'])
     sat_pos['z'] = temp['yk_prime'] * np.sin(temp['ik'])
     sat_pos = sat_pos.fillna(0)
     return sat_pos
@@ -195,14 +199,14 @@ def convert_wgs_to_lla(base_vector):
 
 def ecef_to_ned(x, y, z, R):
     x_ecef = np.array([[x], [y], [z]])
-    x_temp = R.T @ (x_ecef)
+    x_temp = R.T @ x_ecef
     x_ned = [x_temp.item(0), x_temp.item(1), x_temp.item(2)]
     return x_ned
 
 
 def ecef_to_ned2(x, y, z, R):
     x_ecef = np.array([[x], [y], [z]])
-    x_temp = R.T @ (x_ecef)
+    x_temp = R.T @ x_ecef
     return x_temp.item(2)
 
 
@@ -228,8 +232,8 @@ def calc_los_positions(sat_pos, ned_origin):
 def calc_los_elevations(los_df, R):
     los_df['NED'] = los_df.apply(
         lambda r: ecef_to_ned2(r.iloc[0], r.iloc[1], r.iloc[2], R), axis=1)
-    los_df['elevation'] = np.arcsin(los_df['NED'].astype(float) * -1) \
-                          * 180 / m.pi
+    los_df['elevation'] = \
+        np.arcsin(los_df['NED'].astype(float) * -1) * 180 / m.pi
     return los_df
 
 
@@ -269,7 +273,7 @@ def calc_dilution_of_precisions(rover_pos):
     return temp
 
 
-def vector(x_ref):
+def get_ref_vector(x_ref):
     vector = []
     for i in range(3):
         vector.append(x_ref[i] / la.norm(x_ref))
@@ -311,14 +315,14 @@ def p_range_multi(base_df, sat_pos, rover_df, R):
         z = sat_pos[ref].loc[Time, 'z']
         del sat[ref]
         x_ref = ecef_to_ned(x, y, z, R)
-        vec = vector(x_ref)
+        vec = get_ref_vector(x_ref)
         for i in sat:
             if sat_pos[i].at[Time, 'x'] != 0:
                 x_temp = sat_pos[i].loc[Time, 'x']
                 y_temp = sat_pos[i].loc[Time, 'y']
                 z_temp = sat_pos[i].loc[Time, 'z']
                 sat_temp = ecef_to_ned(x_temp, y_temp, z_temp, R)
-                vec_temp = vector(sat_temp)
+                vec_temp = get_ref_vector(sat_temp)
                 H_temp = np.array([vec[0] - vec_temp[0],
                                    vec[1] - vec_temp[1],
                                    vec[2] - vec_temp[2]])

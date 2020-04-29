@@ -13,3 +13,5 @@ l_1_freq = 1575.42e6
 sigma_phi_sqr = 0.025
 
 c = 2.99792458e8
+
+wavelength = c / l_1_freq
