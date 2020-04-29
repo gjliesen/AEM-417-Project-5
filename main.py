@@ -9,8 +9,7 @@ from matplotlib import pyplot as plt
 from scipy import linalg as la
 import navpy
 import constants as cn
-import integer_ambiguities
-import least_squares
+import ambiguity
 import cycle_slip
 
 
@@ -399,8 +398,8 @@ def main():
     # Iterative Least Squares
     rover_pos = get_least_squares(base_df, sat_pos, rover_df, R,
                                   lat, long, h)
-    temp = least_squares.least_squares_pos_solution(base_df, sat_pos, rover_df,
-                                                    R, lat, long, h)
+    temp = ambiguity.least_squares_pos_solution(base_df, sat_pos, rover_df,
+                                                R, lat, long, h)
     # Dilutions of Precision
     DOP = calc_dilution_of_precisions(rover_pos)
 
